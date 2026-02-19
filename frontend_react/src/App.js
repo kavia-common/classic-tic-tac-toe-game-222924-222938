@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 const LINES = [
@@ -38,6 +38,17 @@ function isBoardFull(board) {
   return board.every((cell) => cell !== null);
 }
 
+/**
+ * Maps a numeric key press ("1".."9") to a board index.
+ * The mapping is left-to-right, top-to-bottom.
+ * @param {string} key
+ * @returns {number|null}
+ */
+function keyToIndex(key) {
+  if (!/^[1-9]$/.test(key)) return null;
+  return Number(key) - 1;
+}
+
 // PUBLIC_INTERFACE
 function App() {
   /** @type {[Array<"X"|"O"|null>, Function]} */
@@ -68,6 +79,32 @@ function App() {
     setNextPlayer("X");
   };
 
+  // Keyboard shortcuts:
+  // - Press 1..9 to place a mark (if allowed)
+  // - Press R to reset
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      // Avoid interfering with typing in any future inputs
+      if (e.target && /** @type {HTMLElement} */ (e.target).tagName) {
+        const tag = /** @type {HTMLElement} */ (e.target).tagName.toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return;
+      }
+
+      if (e.key === "r" || e.key === "R") {
+        resetGame();
+        return;
+      }
+
+      const idx = keyToIndex(e.key);
+      if (idx === null) return;
+      handleSquareClick(idx);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // Intentionally include relevant deps so shortcuts match current game state.
+  }, [board, isGameOver, nextPlayer, winningLine]);
+
   const statusText = winner
     ? `Winner: ${winner}`
     : isDraw
@@ -78,11 +115,13 @@ function App() {
     ? "Game over. Hit RESET to play again."
     : isDraw
       ? "No more moves. Hit RESET for a rematch."
-      : "First to 3 in a row wins.";
+      : "Tip: press 1–9 to play, or R to reset.";
+
+  const nextUpText = !isGameOver ? `Next up: ${nextPlayer}` : "Match complete";
 
   return (
     <div className="App">
-      <main className="ttt">
+      <main className="ttt" aria-label="Tic Tac Toe game">
         <header className="ttt__header">
           <div className="ttt__titleBlock">
             <h1 className="ttt__title">Tic Tac Toe</h1>
@@ -94,6 +133,10 @@ function App() {
               {statusText}
             </div>
             <div className="ttt__statusSub">{subStatusText}</div>
+
+            <div className="ttt__statusHint" aria-hidden="true">
+              {nextUpText}
+            </div>
           </div>
         </header>
 
@@ -101,6 +144,7 @@ function App() {
           <div className="ttt__board" role="grid" aria-label="Tic Tac Toe board">
             {board.map((value, idx) => {
               const isWinningSquare = winningLine?.includes(idx) ?? false;
+              const isDisabled = isGameOver || Boolean(value);
 
               return (
                 <button
@@ -116,12 +160,20 @@ function App() {
                     .filter(Boolean)
                     .join(" ")}
                   onClick={() => handleSquareClick(idx)}
-                  disabled={isGameOver || Boolean(value)}
+                  disabled={isDisabled}
                   role="gridcell"
-                  aria-label={`Square ${idx + 1}${value ? `, ${value}` : ""}`}
+                  aria-label={`Square ${idx + 1}${value ? `, ${value}` : ""}${
+                    isWinningSquare ? ", winning square" : ""
+                  }`}
+                  aria-disabled={isDisabled ? "true" : "false"}
                 >
                   <span className="ttt__mark" aria-hidden="true">
                     {value ?? ""}
+                  </span>
+                  <span className="ttt__srOnly">
+                    {value
+                      ? `Filled with ${value}.`
+                      : `Empty. Press ${idx + 1} or click to place ${nextPlayer}.`}
                   </span>
                 </button>
               );
